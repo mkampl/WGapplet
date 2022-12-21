@@ -1,19 +1,29 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import os
 import psutil
 import time
 import sys
 import notify2
 from PyQt5 import QtCore, QtGui, QtWidgets
+from functools import partial
+import WGapplet
 
 
 DEBUG = False
 LOG = False
-TRAY_TOOLTIP = 'Wireguard applet' 
-TRAY_ICON_CONNECTED = '/home/fdlsifu/Documents/tools/wireguard-applet/vpn-on.png' 
-TRAY_ICON_NOTCONNECTED = '/home/fdlsifu/Documents/tools/wireguard-applet/vpn-off.png'
+IMG_PATH = WGapplet.get_img_path()
+print(IMG_PATH)
+TRAY_TOOLTIP = 'Wireguard applet'
+TRAY_ICON_CONNECTED = os.path.join(IMG_PATH,'vpn-on.png')
+TRAY_ICON_NOTCONNECTED = os.path.join(IMG_PATH,'vpn-off.png')
 
-TUN_PATH = '/sys/class/net/wgclient'
+TUN_PATH = '/sys/class/net/'
+# TUN_NAME = 'false'
+
+WG_CONF_PATH = '/etc/wireguard'
+
+CONFS = os.listdir(WG_CONF_PATH)
+CONFS = [x.split(".")[0] for x in CONFS]
 
 state = {'RUNNING':0,'NOTRUNNING':1}
 
@@ -45,11 +55,25 @@ class Worker(QtCore.QRunnable):
 class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
 
     def __init__(self, icon, parent=None):
+        # self.wg_confs = os.listdir(WG_CONF_PATH)
+        # self.wg_confs = [x.split(".")[0] for x in self.wg_confs]
+        # for wg_conf in wg_confs:
+        #     print(wg_conf)
+
+
         QtWidgets.QSystemTrayIcon.__init__(self, icon, parent)
         self.menu = QtWidgets.QMenu(parent)
 
         self.exitAction = self.menu.addAction("Exit")
         self.exitAction.triggered.connect(self.exit)
+
+
+        self.vpn_menu = self.menu.addMenu('VPNs')
+
+        for wg_conf in CONFS:
+            # wg_action = self.vpn_menu.addAction(wg_conf,checkable=True)
+            self.vpn_menu.addAction(QtWidgets.QAction(wg_conf, self.vpn_menu, checkable=True, triggered = partial(self.toogle_VPN,wg_conf)))
+            # wg_action.triggered.connect(self.toogle_VPN)
 
         self.setContextMenu(self.menu)
         
@@ -69,6 +93,21 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
 
     def changeIcon(self,icon):
         self.setIcon(QtGui.QIcon(TRAY_ICON_CONNECTED))
+
+    def toogle_VPN(self,wg_name):
+        # global TUN_NAME
+        print("Toogel VPN",wg_name)
+        #todo:
+        # 1) deactivate the possibility for choosing vpn
+        # 2) add a statusfield to menu like connected to vpn_name
+        # 3) add deactivate button
+
+        if not self.check_vpn_connected():
+            # 4) run wg-quick with the config
+            os.system("wg-quick up "+wg_name)
+        else:
+            # 4) run wg-quick with the config
+            os.system("wg-quick down "+wg_name)
 
     def run(self):
         dlog("SystemTrayIcon started")
@@ -111,9 +150,11 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
     
     @staticmethod
     def check_vpn_connected():
-        if os.path.isdir(TUN_PATH):
-            log('vpn connected')
-            return True
+        for CONF in CONFS:
+            if os.path.isdir(TUN_PATH+CONF):
+                # print("VPN connected: ",CONF)
+                log('vpn connected: ',CONF)
+                return True
         log('vpn not connected')
         return False
 
